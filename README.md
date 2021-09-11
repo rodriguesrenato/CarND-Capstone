@@ -1,3 +1,5 @@
+# Self-Driving Car Capstone Project [Under development]
+
 This is the project repo for the final project of the Udacity Self-Driving Car Nanodegree: Programming a Real Self-Driving Car. For more information about the project, see the project introduction [here](https://classroom.udacity.com/nanodegrees/nd013/parts/6047fe34-d93c-4f50-8336-b70ef10cb4b2/modules/e1a23b06-329a-4684-a717-ad476f0d8dff/lessons/462c933d-9f24-42d3-8bdc-a08a5fc866e4/concepts/5ab4b122-83e6-436d-850f-9f4d26627fd9).
 
 Please use **one** of the two installation options, either native **or** docker installation.
@@ -86,3 +88,36 @@ Specific to these libraries, the simulator grader and Carla use the following:
 | OpenMP | N/A | N/A |
 
 We are working on a fix to line up the OpenCV versions between the two.
+
+# Steps need
+
+- sudo apt install ros-kinetic-pcl-ros
+- conda create --name car-nd-27 python=2.7
+- pip install catkin_pkg
+- pip install empy
+- pip install rospkg
+<!-- - conda install -c conda-forge opencv==3.2.0 -->
+- sudo add-apt-repository 'deb http://security.ubuntu.com/ubuntu xenial-security main'
+- sudo apt update
+- sudo apt install libjasper-dev
+
+# ffmpeg 3.4.1
+conda install ffmpeg x264=20131218 -c conda-forge
+
+# ffmpeg 4
+conda install x264=='1!152.20180717' ffmpeg=4.0.2 -c conda-forge
+
+conda install opencv
+
+# Change
+
+
+waypoint updater:
+- Lookahead distance based on current speed
+- best deceleration according to distance from red traffic light
+- Fixed deceleration for a given red Traffic Light position to WU
+- TODO: Handle yellow traffic light to decide if it is to run or decelerate
+
+dbw_node params:
+<param name="max_lat_accel" value="6." />
+<param name="max_steer_angle" value="16." />
