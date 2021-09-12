@@ -17,8 +17,8 @@ class PID(object):
         self.int_val = 0.0
 
     def step(self, error, sample_time):
-        # Zero crossing reset
-        if (error >= 0 and self.last_error <= 0) or (error <= 0 and self.last_error >= 0):
+        # minimum error crossing reset
+        if (error >= self.min and self.last_error <= self.min) or (error <= self.min and self.last_error >= self.min):
             self.reset()
 
         integral = self.int_val + error * sample_time
