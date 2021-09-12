@@ -4,8 +4,9 @@ This is the project repo for the final project of the Udacity Self-Driving Car N
 
 Please use **one** of the two installation options, either native **or** docker installation.
 
-### Native Installation
+# Installation
 
+## Ubuntu Native 
 * Be sure that your workstation is running Ubuntu 16.04 Xenial Xerus or Ubuntu 14.04 Trusty Tahir. [Ubuntu downloads can be found here](https://www.ubuntu.com/download/desktop).
 * If using a Virtual Machine to install Ubuntu, use the following configuration as minimum:
   * 2 CPU
@@ -19,7 +20,24 @@ Please use **one** of the two installation options, either native **or** docker 
   * [ROS Indigo](http://wiki.ros.org/indigo/Installation/Ubuntu) if you have Ubuntu 14.04.
 * Download the [Udacity Simulator](https://github.com/udacity/CarND-Capstone/releases).
 
-### Docker Installation
+### Additional steps
+
+Depending on your current system, some packages might be installed:
+
+```shell
+sudo apt install ros-kinetic-pcl-ros
+conda create --name car-nd-27 python=2.7
+pip install catkin_pkg
+pip install empy
+pip install rospkg
+sudo add-apt-repository 'deb http://security.ubuntu.com/ubuntu xenial-security main'
+sudo apt update
+sudo apt install libjasper-dev
+conda install x264=='1!152.20180717' ffmpeg=4.0.2 -c conda-forge
+conda install opencv
+```
+
+## Docker Installation
 [Install Docker](https://docs.docker.com/engine/installation/)
 
 Build the docker container
@@ -32,10 +50,10 @@ Run the docker file
 docker run -p 4567:4567 -v $PWD:/capstone -v /tmp/log:/root/.ros/ --rm -it capstone
 ```
 
-### Port Forwarding
+## Port Forwarding
 To set up port forwarding, please refer to the "uWebSocketIO Starter Guide" found in the classroom (see Extended Kalman Filter Project lesson).
 
-### Usage
+## Usage
 
 1. Clone the project repository
 ```bash
@@ -56,7 +74,7 @@ roslaunch launch/styx.launch
 ```
 4. Run the simulator
 
-### Real world testing
+## Real world testing
 1. Download [training bag](https://s3-us-west-1.amazonaws.com/udacity-selfdrivingcar/traffic_light_bag_file.zip) that was recorded on the Udacity self-driving car.
 2. Unzip the file
 ```bash
@@ -89,35 +107,44 @@ Specific to these libraries, the simulator grader and Carla use the following:
 
 We are working on a fix to line up the OpenCV versions between the two.
 
-# Steps need
+# Implementation Discussion
 
-- sudo apt install ros-kinetic-pcl-ros
-- conda create --name car-nd-27 python=2.7
-- pip install catkin_pkg
-- pip install empy
-- pip install rospkg
-<!-- - conda install -c conda-forge opencv==3.2.0 -->
-- sudo add-apt-repository 'deb http://security.ubuntu.com/ubuntu xenial-security main'
-- sudo apt update
-- sudo apt install libjasper-dev
+- **Twist_controller.py**:
+  - Increased throttle limit to 0.9 to achieve higher speeds on tests.
+  - Tested different PID configurations for Throttle Controller, PI controller was the best config achieved.
+  - Increased `max_lat_accel` and `max_steer_angle` on the launch file params in order to the YawController keep on the lane on curves on high speeds (80-100 kmh)
 
-# ffmpeg 3.4.1
-conda install ffmpeg x264=20131218 -c conda-forge
+- **pid.py**:
+  - Added zero cross reset on the integral error
 
-# ffmpeg 4
-conda install x264=='1!152.20180717' ffmpeg=4.0.2 -c conda-forge
-
-conda install opencv
-
-# Change
+- **dbw_node.py**:
+  - Twist Controller was used to calculate throttle, brake and steering
+  - Only publish the control commands if dbw is enabled
 
 
-waypoint updater:
-- Lookahead distance based on current speed
-- best deceleration according to distance from red traffic light
-- Fixed deceleration for a given red Traffic Light position to WU
-- TODO: Handle yellow traffic light to decide if it is to run or decelerate
+- **waypoint_updater.py**:
+  - Added a subscriber to `/current_velocity` and used the low pass filter to calculate the current_velocity filtered too.
+  - In the `generate_lane()` function, a `Lane()` is prepared with a sequence of waypoints ahead of the car's current position. This list of waypoints has a variable size according to the current speed (Lookahead distance based on current speed). Higher speeds will result in a higher waypoints list, which is going to help detect red traffic lights and prepare deceleration with enough time.
+  - Added a handler in case the waypoints needed cross the end of the base_lane waypoints list and complete with waypoints from the beginning
+  - When a Traffic light is detected, `decelerate_waypoints_tl()` is called to decelerate waypoint speeds:
+    - The deceleration is based on the kinematic Torricelli equation.
+    - The best deceleration is calculated once when a red traffic light is found ahead, according to the distance to the next red traffic light found.
+    - If the calculated speed is too low and the car is close to the traffic light, then set speed as zero to prevent the car from trying to adjust the position if it isn't right in the line. It happens due to the throttle controller overshooting. 
+    - There is a debug flag that can be activated by launch file to print the relevant speed, waypoints pos index and a sequence of the following 40 final waypoints speeds. This helps to see the deceleration curve and how the current speed is being adjusted by the controller to get to the set point.
+    - Other approaches were made to decelerate, but didn't perform well: Variable deceleration, linear deceleration, S-Curve speed deceleration. It was difficult to find a way to guarantee that the deceleration will respect the desired deceleration limit.
+    - Computed distances from the car current positions to the waypoints and use current velocity filtered, both of them to calculate the best decel, which avoids the next waypoint speed being higher than the current speed when the car is planning to decelerate.
 
-dbw_node params:
-<param name="max_lat_accel" value="6." />
-<param name="max_steer_angle" value="16." />
+- **waypoint_loader.py**:
+  - Remove decelerate function when loading waypoints from file, all waypoints will be set with the lane max lane speed.
+  - **waypoint_loader.launch**:
+    - Increased velocity to 80 kmh
+    - It was tested successfully with 40, 80 and 100 khm.
+
+- **waypoint_follower**:
+  - On `pure_pursuit_core.cpp` line `260`, the `following_flag` check is bypassed to compute angular velocity on each loop.
+
+## Next Steps
+
+- Handle yellow traffic light to decide if it is to run or decelerate
+- Design a Traffic light detector and classifier using neural networks 
+- Add an object detection
