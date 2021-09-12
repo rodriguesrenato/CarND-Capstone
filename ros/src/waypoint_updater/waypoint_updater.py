@@ -40,9 +40,8 @@ class WaypointUpdater(object):
         self.waypoint_tree = None
         self.current_vel = -1
         self.current_vel_filtered = -1
-        self.decel_flag = False
         self.decel_stopline_ref = None
-        self.decel_coeff = None
+        
         self.decel_target = -1
         self.decel_params = []
         self.lookahead_wps = LOOKAHEAD_WPS
@@ -102,44 +101,27 @@ class WaypointUpdater(object):
         closest_idx = self.get_closest_waypoint_idx()
         farthest_idx = closest_idx + self.lookahead_wps
         base_waypoints = self.base_lane.waypoints[closest_idx:farthest_idx]
+
+        # Handle when the base_waypoints cross the end of the lane_waypoints vector
         if farthest_idx > len(self.base_lane.waypoints):
-            aux_wp = self.base_lane.waypoints[:(farthest_idx-len(self.base_lane.waypoints))]
-            for wp in aux_wp: 
+            aux_wp = self.base_lane.waypoints[:(
+                farthest_idx-len(self.base_lane.waypoints))]
+            for wp in aux_wp:
                 base_waypoints.append(wp)
         lane.header = self.base_lane.header
 
-        # Get the minimum target speed of the trajectory of waypoints
-        # waypoint_vel = min(base_waypoints[0].twist.twist.linear.x,base_waypoints[-1].twist.twist.linear.x)
-
-        # debug_str = "BASE [{:02.1} / {}]|".format(self.current_vel, (self.stopline_wp_idx - closest_idx))
-        # for i, wp in enumerate(base_waypoints):
-        #     debug_str += "{:02.1f}|".format(wp.twist.twist.linear.x)
-
-        # rospy.logwarn(debug_str+"\n")
-
-        # if (self.current_vel is not None) and (abs(waypoint_vel-self.current_vel) > 1.0):
-        # rospy.logwarn("[W_U] Speed change trigger: {:.2f} -> {:.2f}".format(self.current_vel, waypoint_vel))
-
-        # Check if the car should immediately accelerate
-        # if waypoint_vel > self.current_vel:
-        #     base_waypoints = self.accelerate_waypoints(base_waypoints)
-
-        # TODO: Implement decelerate_waypoints in case th waypoint target speed is lower than
-        # the current speed. In this project, this situation should not happen as we have a
-        # fixed waypoint target speed and the car wouldn't drive faster than that.
-
+        # Check if there is a red light ahead in trajectory len to start decelerating, otherwise keep ahead.
+        # Even though the trajectory is built under the whole lookahead_wps length, the lane waypoint length is fixed at LOOKAHEAD_WPS
         if self.stopline_wp_idx == -1 or (self.stopline_wp_idx >= farthest_idx):
             lane.waypoints = base_waypoints[:LOOKAHEAD_WPS]
         else:
-            # if self.decel_stopline_ref != self.stopline_wp_idx:
-            #     self.decel_coeff = None
-            #     self.decel_target = -1
             lane.waypoints = self.decelerate_waypoints_tl(
                 base_waypoints, closest_idx)[:LOOKAHEAD_WPS]
 
+        # Show trajectory information and speeds on each following waypoints
         if self.debug:
             debug_str = "[WU] spd:{:02.1f}/{:02.1f}, decel_target:{:02.2f}, wpID/to_tl:{:4.0f}/{:4.0f}] |".format(
-                self.current_vel,self.current_vel_filtered, self.decel_target, closest_idx, (self.stopline_wp_idx - closest_idx))
+                self.current_vel, self.current_vel_filtered, self.decel_target, closest_idx, (self.stopline_wp_idx - closest_idx))
 
             for i, wp in enumerate(lane.waypoints):
                 debug_str += "{:2.1f}|".format(wp.twist.twist.linear.x)
@@ -149,85 +131,26 @@ class WaypointUpdater(object):
             rospy.logwarn(debug_str)
         return lane
 
-    # def accelerate_waypoints(self, waypoints):
-    #     temp = []
-    #     reach_target_wp_speed = False
-    #     for i, wp in enumerate(waypoints):
-    #         p = Waypoint()
-    #         p.pose = wp.pose
-
-    #         # If the acceleration curve reaches the waypoint target speed, then just copy the rest of the waypoints
-    #         if reach_target_wp_speed:
-    #             p.twist.twist.linear.x = wp.twist.twist.linear.x
-
-    #         else:
-    #             # Calculate the distance from the first waypoint to the current iteration waypoint
-    #             dist = self.distance_from_current_pose(waypoints,i)
-    #             # Torricelli Equation with v_final = current_vel + 2*MAX_ACCEL*dist
-    #             vel = math.sqrt(
-    #                 math.pow(self.current_vel, 2) + 2.0 * MAX_ACCEL*dist)
-    #             # if vel < 1.1:
-    #             #     vel = 1.1
-    #             # when reaches the waypoint target speed, set the flag
-    #             if vel > wp.twist.twist.linear.x:
-    #                 reach_target_wp_speed = True
-    #                 p.twist.twist.linear.x = wp.twist.twist.linear.x
-    #             else:
-    #                 p.twist.twist.linear.x = vel
-
-    #         temp.append(p)
-
-    #     return temp
-
-    # def decelerate_waypoints_tl(self, waypoints, closest_idx):
-    #     temp = []
-    #     for i, wp in enumerate(waypoints):
-
-    #         p = Waypoint()
-    #         p.pose = wp.pose
-
-    #         # Three waypoints back from line so front of car stops at line
-    #         stop_idx = max(self.stopline_wp_idx - closest_idx - 2, 0)
-    #         dist = self.distance(waypoints, i, stop_idx)
-
-    #         # Torricelli Equation with v_final = 0
-    #         # TODO: Improve this create a new decel curve, continuous derivative -> S curve with accel ramp?
-    #         vel = math.sqrt(2 * MAX_DECEL*dist)
-    #         if vel < 0.1:
-    #             vel = 0.0
-    #         # if dist < 2.0:
-    #         #     p.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x,self.current_vel)
-    #         # else:
-    #         p.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x)
-    #         temp.append(p)
-
-    #     return temp[:LOOKAHEAD_WPS]
-
     def decelerate_waypoints_tl(self, waypoints, closest_idx):
         # Three waypoints back from line so front of car stops at line
         stop_idx = max(self.stopline_wp_idx - closest_idx - 2, 0)
-        # dist_tl = self.distance(waypoints, 0, stop_idx)
+
+        # Calculate the distance from car to the target stop waypoint
         dist_tl = self.distance_from_current_pose(waypoints, stop_idx)
 
         # Get the deceleration needed to stop the car before traffic lights, by Torricelli equation
         decel = math.pow(self.current_vel_filtered, 2) / (2*dist_tl)
 
-        # if self.decel_coeff == None:
-        #     self.decel_coeff = max(0.3, self.current_vel_filtered/dist_tl)
-        #     self.decel_stopline_ref = self.stopline_wp_idx
-        
+        # Update the target deceleration once when find a new trafficlight
         if self.decel_stopline_ref != self.stopline_wp_idx:
-            self.decel_target = max(min(decel, MAX_DECEL),MIN_DECEL)
+            self.decel_target = max(min(decel, MAX_DECEL), MIN_DECEL)
             if self.decel_target > MIN_DECEL:
                 self.decel_stopline_ref = self.stopline_wp_idx
 
-        # if self.decel_target < 0:
-        #     self.decel_target = max(min(decel, MAX_DECEL),MIN_DECEL)
-        #     self.decel_stopline_ref = self.stopline_wp_idx
-
+        # Check if the dynamic calculated deceleration need to break the car on time will exceed the maximum limit, if so then keep ahead
         if decel > MAX_DECEL:
-            rospy.logerr("The car won't have enough time to break, crossing traffic light: stop_idx={}, dist={:2.1f}, decel={:2.2f}, decel_coeff={}".format(
-                stop_idx, dist_tl, decel, self.decel_coeff))
+            rospy.logerr("The car won't have enough time to break, crossing traffic light: stop_idx={}, dist_tl={:2.1f}, decel_needed={:2.2f}, decel_target={}".format(
+                stop_idx, dist_tl, decel, self.decel_target))
             return waypoints
 
         else:
@@ -242,66 +165,17 @@ class WaypointUpdater(object):
                 dist = self.distance(waypoints, i, stop_idx)
 
                 # Torricelli Equation with v_final = 0
-                # TODO: Improve this create a new decel curve, continuous derivative -> S curve with accel ramp?
-                # vel = math.sqrt(2 * MAX_DECEL*dist)
                 vel = math.sqrt(2 * self.decel_target * dist)
-                if vel < 0.2 or (self.current_vel < 0.2 and dist < 3.0):
+
+                # Set this waypoint velocity to zero when calculate speed is too low or when 
+                # the current speed is too low and it is close to the traffic light. This helps 
+                # avoiding the resulting overshooting of the speed controller at the set point
+                if vel < 0.2 or (self.current_vel < 0.2 and dist < 5.0):
                     vel = 0.0
-                # if dist < 2.0:
-                #     p.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x,self.current_vel)
-                # else:
+
                 p.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x)
                 temp.append(p)
-                # rospy.logwarn("[WU]Decelerating: stop_idx={}, dist={:2.1f}, decel={:2.2f}, decel_coeff={:2.2f}".format(
-                #     stop_idx, dist_tl, decel, self.decel_coeff))
             return temp
-
-    # def decelerate_waypoints_tl_ramp(self, waypoints, closest_idx):
-
-    #     # Three waypoints back from line so front of car stops at line
-    #     stop_idx = max(self.stopline_wp_idx - closest_idx - 2, 0)
-    #     # dist_tl = self.distance(waypoints, 0, stop_idx)
-    #     dist_tl = self.distance_from_current_pose(waypoints, stop_idx)
-
-    #     # Get the deceleration needed to stop the car before traffic lights, by Torricelli equation
-    #     decel = math.pow(self.current_vel_filtered, 2) / (2*dist_tl)
-
-    #     if self.decel_coeff == None:
-    #         self.decel_coeff = max(0.3, self.current_vel_filtered/dist_tl)
-    #         self.decel_stopline_ref = self.stopline_wp_idx
-
-    #     if decel > MAX_DECEL:
-    #         rospy.logerr("The car won't have enough time to break, crossing traffic light: stop_idx={}, dist={:2.1f}, decel={:2.2f}, decel_coeff={:2.2f}".format(
-    #             stop_idx, dist_tl, decel, self.decel_coeff))
-    #         return waypoints
-
-    #     else:
-    #         temp = []
-    #         for i, wp in enumerate(waypoints):
-
-    #             p = Waypoint()
-    #             p.pose = wp.pose
-
-    #             # dist = self.distance_from_current_pose(waypoints, i)
-    #             dist = self.distance(waypoints, i, stop_idx)
-    #             # Torricelli Equation with v_final = 0
-    #             # TODO: Improve this create a new decel curve, continuous derivative -> S curve with accel ramp?
-    #             # vel = math.sqrt(2 * MAX_DECEL*dist)
-
-    #             # Linear deceleration
-    #             # vel = 0.5*(dist_tl - dist)+1.0
-    #             vel = self.decel_coeff*dist
-    #             if vel < 0.2 or i >= stop_idx:
-    #                 vel = 0.0
-    #             # if dist < 2.0:
-    #             #     p.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x,self.current_vel)
-    #             # else:
-    #             p.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x)
-    #             temp.append(p)
-
-    #         rospy.logwarn("[WU]Decelerating: stop_idx={}, dist={:2.1f}, decel={:2.2f}, decel_coeff={:2.2f}".format(
-    #             stop_idx, dist_tl, decel, self.decel_coeff))
-    #         return temp
 
     def pose_cb(self, msg):
         self.pose = msg
@@ -332,6 +206,7 @@ class WaypointUpdater(object):
     def set_waypoint_velocity(self, waypoints, waypoint, velocity):
         waypoints[waypoint].twist.twist.linear.x = velocity
 
+    # Calculate Distance between two waypoints
     def distance(self, waypoints, wp1, wp2):
         dist = 0
 
@@ -343,6 +218,7 @@ class WaypointUpdater(object):
             wp1 = i
         return dist
 
+    # Calculate Distance from current pose to the given waypoint
     def distance_from_current_pose(self, waypoints, idx):
         dist = 0
 
