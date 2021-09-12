@@ -111,7 +111,10 @@ We are working on a fix to line up the OpenCV versions between the two.
 
 # Implementation Discussion
 
-- **Twist_controller.py**:
+- **tl_detector.py**:
+  - Detector will publish on `/traffic_waypoints` topic the next traffic light index which is `RED` or `YELLOW`, preventing the car to avoid crossing red lights.
+
+- **twist_controller.py**:
   - Increased throttle limit to 0.9 to achieve higher speeds on tests.
   - Tested different PID configurations for Throttle Controller, PI controller was the best config achieved.
   - Increased `max_lat_accel` and `max_steer_angle` on the launch file params in order to the YawController keep on the lane on curves on high speeds (80-100 kmh)
@@ -126,7 +129,7 @@ We are working on a fix to line up the OpenCV versions between the two.
 
 - **waypoint_updater.py**:
   - Added a subscriber to `/current_velocity` and used the low pass filter to calculate the current_velocity filtered too.
-  - In the `generate_lane()` function, a `Lane()` is prepared with a sequence of waypoints ahead of the car's current position. This list of waypoints has a variable size according to the current speed (Lookahead distance based on current speed). Higher speeds will result in a higher waypoints list, which is going to help detect red traffic lights and prepare deceleration with enough time.
+  - In the `generate_lane()` function, a `Lane()` is prepared with a sequence of waypoints ahead of the car's current position. This list of waypoints has a variable size according to the current speed (`Lookahead distance` based on `current_speed`). Higher speeds will result in a higher waypoints list, which is going to help detect red traffic lights and prepare deceleration with enough time.
   - Added a handler in case the waypoints needed cross the end of the base_lane waypoints list and complete with waypoints from the beginning
   - When a Traffic light is detected, `decelerate_waypoints_tl()` is called to decelerate waypoint speeds:
     - The deceleration is based on the kinematic Torricelli equation.
@@ -139,7 +142,7 @@ We are working on a fix to line up the OpenCV versions between the two.
 - **waypoint_loader.py**:
   - Remove decelerate function when loading waypoints from file, all waypoints will be set with the lane max lane speed.
   - **waypoint_loader.launch**:
-    - Increased velocity to 80 kmh
+    - Waypoints velocity set to 40 kmh. The `velocity` param corresponds to the maximum lane speed for the waypoints
     - It was tested successfully with 40, 80 and 100 khm.
 
 - **waypoint_follower**:
